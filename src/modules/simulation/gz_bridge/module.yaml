@@ -34,3 +34,37 @@ actuator_output:
         max: { min: 0, max: 200, default: 200 }
         failsafe: { min: 0, max: 200 }
       num_channels: 2
+
+parameters:
+    - group: Geometry
+      definitions:
+        SIM_GZ_SV_MAXA${i}:
+            description:
+                short: Servo ${i} Angle at Maximum
+                long: |
+                  Defines the angle when the servo is at the maximum.
+                  Currently only supported in gz simulation and must be coherent with .sdf file and CA_SV_TL{n}_MAXA.
+                  The default of 57.29578 deg (1 rad) reproduces the legacy fixed [-1, 1] rad servo mapping.
+            type: float
+            decimal: 0
+            unit: 'deg'
+            num_instances: 8
+            instance_start: 1
+            min: -180.0
+            max: 180.0
+            default: 57.29578
+        SIM_GZ_SV_MINA${i}:
+            description:
+                short: Servo ${i} Angle at Minimum
+                long: |
+                  Defines the angle when the servo is at the minimum.
+                  Currently only supported in gz simulation and must be coherent with .sdf file and CA_SV_TL{n}_MINA.
+                  The default of -57.29578 deg (-1 rad) reproduces the legacy fixed [-1, 1] rad servo mapping.
+            type: float
+            decimal: 0
+            unit: 'deg'
+            num_instances: 8
+            instance_start: 1
+            min: -180.0
+            max: 180.0
+            default: -57.29578
