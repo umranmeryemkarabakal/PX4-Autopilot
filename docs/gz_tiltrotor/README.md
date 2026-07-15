@@ -1,10 +1,19 @@
-# Gazebo Harmonic — Tilt-Rotor VTOL (gz_tiltrotor)
+# Gazebo Harmonic — Tilt-Rotor VTOL
 
 PX4 **v1.15.4** üzerinde Gazebo Harmonic (gz-sim 8) ile çalışan Tilt-Rotor VTOL
-simülasyonu. Gazebo Classic'e ihtiyaç duymaz.
+simülasyonları. Gazebo Classic'e ihtiyaç duymaz.
 
-Ön iki rotor (`motor_0`, `motor_2`) multicopter modunda dikey durur ve fixed-wing
-geçişinde fiziksel olarak **0° → 90°** tilt eder.
+İki bağımsız model vardır:
+
+| Model | Hedef | Konfigürasyon |
+|---|---|---|
+| **Model-1** | `gz_tiltrotor` | 4 rotor; ön 2'si (`motor_0`, `motor_2`) tilt, arka 2'si sabit dikey |
+| **Model-2** | `gz_tiltrotor_2plus1` | 3 rotor; kanatta 2 tilt + kuyrukta 1 tilt (cruise'da pusher) |
+
+Tilt eden rotorlar multicopter modunda dikey durur ve fixed-wing geçişinde fiziksel
+olarak **0° → 90°** tilt eder.
+
+> Proje durumu, tasarım gerekçeleri ve **açık iş kalemleri** için → [STATUS.md](STATUS.md)
 
 ---
 
@@ -28,7 +37,8 @@ gz sim --version      # Gazebo Sim, version 8.x
 
 ```bash
 cd ~/PX4-Autopilot
-make px4_sitl gz_tiltrotor
+make px4_sitl gz_tiltrotor          # Model-1 (4 rotor)
+make px4_sitl gz_tiltrotor_2plus1   # Model-2 (tri-tiltrotor)
 ```
 
 Gazebo GUI açılır, model spawn olur ve aynı terminalde PX4'ün `pxh>` konsolu gelir.
@@ -131,12 +141,22 @@ onu gölgeler. `4020_gz_tiltrotor` içinde değişiklik yaptıysanız:
 rm -rf build/px4_sitl_default/rootfs/eeprom
 ```
 
-### Sim açılmıyor / model spawn olmuyor
+### `INFO [px4] PX4 server already running for instance 0`
 
-Önceki oturumdan artakalan `gz sim` sunucusu olabilir:
+Süreç ölse bile `/tmp/px4-sock-0` soketi geride kalır ve PX4 başka bir örneğin
+çalıştığını sanır. Modelle ilgisi yoktur:
 
 ```bash
-pkill -9 -f 'gz sim'; pkill -9 -f 'px4_sitl_default/bin/px4'
+rm -f /tmp/px4-sock-0
+```
+
+### Sim açılmıyor / model spawn olmuyor
+
+Önceki oturumdan artakalan `gz sim` sunucusu olabilir. Sim'i yeniden başlatmadan
+önceki tam temizlik:
+
+```bash
+pkill -9 -f 'px4_sitl_default/bin/px4'; pkill -9 -f 'gz sim'; rm -f /tmp/px4-sock-0
 ```
 
 ### `gz_frame_id ... not defined in SDF` uyarıları
