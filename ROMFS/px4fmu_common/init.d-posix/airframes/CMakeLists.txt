@@ -85,6 +85,7 @@ px4_add_romfs_files(
 	4011_gz_lawnmower
 	4020_gz_tiltrotor
 	4021_gz_tiltrotor_2plus1
+	4022_gz_tiltrotor_tailplane
 
 	6011_gazebo-classic_typhoon_h480
 	6011_gazebo-classic_typhoon_h480.post

@@ -1,0 +1,163 @@
+#!/bin/sh
+#
+# @name VTOL Tiltrotor with Tailplane
+#
+# @type VTOL Tiltrotor
+#
+
+. ${R}etc/init.d/rc.vtol_defaults
+
+PX4_SIMULATOR=${PX4_SIMULATOR:=gz}
+PX4_GZ_WORLD=${PX4_GZ_WORLD:=default}
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=tiltrotor_tailplane}
+
+param set-default SIM_GZ_EN 1 # Gazebo bridge
+
+param set-default MAV_TYPE 21
+
+param set-default SENS_EN_GPSSIM 1
+param set-default SENS_EN_BAROSIM 0
+param set-default SENS_EN_MAGSIM 1
+param set-default SENS_EN_ARSPDSIM 1
+
+param set-default FD_ACT_EN 0
+param set-default FD_ESCS_EN 0
+
+param set-default CA_AIRFRAME 3
+
+# Two tilting rotors under the wing plus one tilting rotor on the tail boom.
+# Positions are in FRD and mirror the model: the .sdf is in FLU (y to the left),
+# so PY = -y_sdf and PZ = -z_sdf.
+#   rotor 0: sdf (0.22, -0.25, -0.06) right wing, ccw, under the wing
+#   rotor 1: sdf (0.22,  0.25, -0.06) left wing,  cw,  under the wing
+#   rotor 2: sdf (-0.65, 0,    0.07)  tail boom,  ccw, pusher in forward flight
+#
+# Pitch comes from the thrust difference between the wing rotors and the rear rotor:
+# 2 * T_front * 0.22 = T_rear * 0.65, which trims at roughly 37% of weight on each
+# wing rotor and 25% on the tail - close to the 2+1 model's measured split. The wing
+# rotors are at y = +-0.25 rather than +-0.35 because that is where the x8_wing still
+# reaches back to x = 0.22: it is the outboard station that keeps them under wing
+# without giving up the pitch arm. PZ is positive (rotors below the CG) and does not
+# enter the hover pitch balance, which depends on PX only.
+param set-default CA_ROTOR_COUNT 3
+param set-default CA_ROTOR0_PX 0.22
+param set-default CA_ROTOR0_PY 0.25
+param set-default CA_ROTOR0_PZ 0.06
+param set-default CA_ROTOR0_KM 0.05
+param set-default CA_ROTOR0_TILT 1
+param set-default CA_ROTOR1_PX 0.22
+param set-default CA_ROTOR1_PY -0.25
+param set-default CA_ROTOR1_PZ 0.06
+param set-default CA_ROTOR1_KM -0.05
+param set-default CA_ROTOR1_TILT 2
+param set-default CA_ROTOR2_PX -0.65
+param set-default CA_ROTOR2_PY 0.0
+param set-default CA_ROTOR2_PZ -0.07
+param set-default CA_ROTOR2_KM 0.05
+param set-default CA_ROTOR2_TILT 3
+
+# All three rotors tilt, so all three keep running in forward flight. The 0..90 deg
+# range must stay coherent with the motor_{0,1,2}_joint limits (0 .. 1.57 rad) and
+# with SIM_GZ_SV_MINA/MAXA below.
+# Yaw in hover is differential tilt of the two wing rotors. The rear rotor is on the
+# centreline, where tilting produces no yaw moment, so it is not used for control
+# (CA_SV_TL2_CT 0). Pitch is deliberately NOT allocated onto the tilts (no CT 2/3):
+# ActuatorEffectivenessTiltrotorVTOL hard-disables tilt-based pitch, and this airframe
+# does not need it - the rear rotor's thrust provides pitch directly.
+param set-default CA_SV_TL_COUNT 3
+param set-default CA_SV_TL0_MINA 0
+param set-default CA_SV_TL0_MAXA 90
+param set-default CA_SV_TL0_TD 0
+param set-default CA_SV_TL0_CT 1
+param set-default CA_SV_TL1_MINA 0
+param set-default CA_SV_TL1_MAXA 90
+param set-default CA_SV_TL1_TD 0
+param set-default CA_SV_TL1_CT 1
+param set-default CA_SV_TL2_MINA 0
+param set-default CA_SV_TL2_MAXA 90
+param set-default CA_SV_TL2_TD 0
+param set-default CA_SV_TL2_CT 0
+
+# Conventional layout, so the surfaces split by axis rather than mixing: the wing
+# elevons act as ailerons (roll), the tailplane's two elevators carry pitch, and the
+# fin carries yaw. Each elevator takes half the pitch torque so the pair sums to the
+# single-elevator authority the 2+1 model uses.
+param set-default CA_SV_CS_COUNT 5
+param set-default CA_SV_CS0_TYPE 1
+param set-default CA_SV_CS0_TRQ_R -0.5
+param set-default CA_SV_CS1_TYPE 2
+param set-default CA_SV_CS1_TRQ_R 0.5
+param set-default CA_SV_CS2_TYPE 3
+param set-default CA_SV_CS2_TRQ_P 0.5
+param set-default CA_SV_CS3_TYPE 3
+param set-default CA_SV_CS3_TRQ_P 0.5
+param set-default CA_SV_CS4_TYPE 4
+param set-default CA_SV_CS4_TRQ_Y 1
+
+param set-default SIM_GZ_EC_FUNC1 101
+param set-default SIM_GZ_EC_FUNC2 102
+param set-default SIM_GZ_EC_FUNC3 103
+
+param set-default SIM_GZ_EC_MIN1 10
+param set-default SIM_GZ_EC_MIN2 10
+param set-default SIM_GZ_EC_MIN3 10
+
+param set-default SIM_GZ_EC_MAX1 1500
+param set-default SIM_GZ_EC_MAX2 1500
+param set-default SIM_GZ_EC_MAX3 1500
+
+# Servos 1-5: control surfaces (model servo_0..servo_4)
+#   1 left aileron, 2 right aileron, 3 left elevator, 4 right elevator, 5 rudder
+# Servos 6-8: rotor tilt (model servo_5..servo_7)
+# Topics are 0-indexed, parameters 1-indexed: servo_5 <-> SIM_GZ_SV_*6.
+param set-default SIM_GZ_SV_FUNC1 201
+param set-default SIM_GZ_SV_FUNC2 202
+param set-default SIM_GZ_SV_FUNC3 203
+param set-default SIM_GZ_SV_FUNC4 204
+param set-default SIM_GZ_SV_FUNC5 205
+param set-default SIM_GZ_SV_FUNC6 206
+param set-default SIM_GZ_SV_FUNC7 207
+param set-default SIM_GZ_SV_FUNC8 208
+
+# Tilt servos sweep 0..90 deg; without this the bridge falls back to its default
+# +-57.29578 deg range and the rotors never reach the forward-flight position.
+param set-default SIM_GZ_SV_MINA6 0
+param set-default SIM_GZ_SV_MAXA6 90
+param set-default SIM_GZ_SV_MINA7 0
+param set-default SIM_GZ_SV_MAXA7 90
+param set-default SIM_GZ_SV_MINA8 0
+param set-default SIM_GZ_SV_MAXA8 90
+
+# Park the rotors upright while disarmed instead of at the mid-range 45 deg.
+param set-default SIM_GZ_SV_DIS6 0
+param set-default SIM_GZ_SV_DIS7 0
+param set-default SIM_GZ_SV_DIS8 0
+
+param set-default NPFG_PERIOD 12
+param set-default FW_PR_FF 0.2
+param set-default FW_PR_P 0.9
+param set-default FW_PSP_OFF 2
+param set-default FW_P_LIM_MIN -15
+param set-default FW_RR_FF 0.1
+param set-default FW_RR_P 0.3
+param set-default FW_THR_TRIM 0.38
+param set-default FW_THR_MAX 0.6
+param set-default FW_THR_MIN 0.05
+param set-default FW_T_CLMB_MAX 8
+param set-default FW_T_SINK_MAX 2.7
+param set-default FW_T_SINK_MIN 2.2
+
+param set-default MC_AIRMODE 1
+param set-default MC_YAWRATE_P 0.4
+param set-default MC_YAWRATE_I 0.1
+
+param set-default MPC_XY_VEL_P_ACC 3
+param set-default MPC_XY_VEL_I_ACC 4
+param set-default MPC_XY_VEL_D_ACC 0.1
+
+param set-default MIS_TAKEOFF_ALT 10
+
+param set-default VT_FWD_THRUST_EN 4
+param set-default VT_FWD_THRUST_SC 0.6
+param set-default VT_TILT_TRANS 0.6
+param set-default VT_TYPE 1
