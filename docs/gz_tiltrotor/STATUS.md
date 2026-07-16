@@ -3,23 +3,25 @@
 > Bu dosya bir **devir/devam noktası**dır. Çalışmaya buradan devam edilir.
 > Kullanım talimatları için [README.md](README.md).
 >
-> Son güncelleme: 2026-07-16 · Dal: `gz-tiltrotor-port` · Son commit: `889179e24b`
+> Son güncelleme: 2026-07-16 · Dal: `gz-tiltrotor-port` · Son commit: `d15969691c`
 
 ---
 
 ## 1. Nerede kaldık
 
-PX4 v1.15.4 üzerinde Gazebo Harmonic ile çalışan **iki bağımsız VTOL modeli** var.
-İkisi de SITL'de uçuruldu ve doğrulandı. Açık iş kalemleri için → [§6](#6-açık-konular).
+PX4 v1.15.4 üzerinde Gazebo Harmonic ile çalışan **üç bağımsız VTOL modeli** var.
+Üçü de SITL'de uçuruldu ve doğrulandı. Açık iş kalemleri için → [§6](#6-açık-konular).
 
 | Model | Hedef | Konfigürasyon | Durum |
 |---|---|---|---|
 | **Model-1** | `gz_tiltrotor` | 4 rotor; ön 2'si tilt, arka 2'si sabit dikey | ✅ Uçuyor |
 | **Model-2** | `gz_tiltrotor_2plus1` | 3 rotor; kanatta 2 tilt + kuyrukta 1 tilt (cruise'da pusher) | ✅ Uçuyor |
+| **Model-3** | `gz_tiltrotor_tailplane` | Model-2'nin tahrik düzeni + klasik kuyruk (2 elevator + rudder) | ✅ Uçuyor |
 
 ```bash
-make px4_sitl gz_tiltrotor          # Model-1
-make px4_sitl gz_tiltrotor_2plus1   # Model-2
+make px4_sitl gz_tiltrotor            # Model-1
+make px4_sitl gz_tiltrotor_2plus1     # Model-2
+make px4_sitl gz_tiltrotor_tailplane  # Model-3
 ```
 
 ---
@@ -66,6 +68,32 @@ CI ve taze klonlar anahtarsız çekebilsin).
 Model-1'e **hiç dokunulmadı**; kanat, meshler, kütle ve LiftDrag katsayıları ondan
 yeniden kullanıldı. Yalnızca tahrik düzeni ve `iyy`/`izz` (kuyruk kolu için
 0.146/0.148 → 0.20/0.20) değişti.
+
+### 2.4 `d15969691c` — Model-3 (kuyruklu tri-tiltrotor)
+
+| Dosya | Ne yapıldı |
+|---|---|
+| `Tools/simulation/gz/models/tiltrotor_tailplane/model.sdf` | Yeni model (submodule `debcdee`) |
+| `.../tiltrotor_tailplane/model.config` | Model kaydı |
+| `ROMFS/.../airframes/4022_gz_tiltrotor_tailplane` | Model-3 airframe |
+| `ROMFS/.../airframes/CMakeLists.txt` | Airframe kaydı (+1 satır) |
+
+Model-1 ve Model-2'ye **hiç dokunulmadı**; ikisi de uçmaya devam ediyor. Paylaşılan
+hiçbir kod değişmedi — CMakeLists'teki tek satırlık kayıt dışında Model-3 tamamen
+kendi dosyalarında.
+
+**Neden var:** Model-2 roll ve pitch'i kanat elevon'larına karıştırıyor ve **hiç yaw
+yüzeyi yok** — cruise'da yaw rotorlara kalıyor. Model-3 ileri uçuş kontrolünü
+eksenlere ayırıyor: elevon'lar yalnız roll, iki elevator pitch, rudder yaw. Yani
+klasik bir uçağın yaptığı şey; Model-3'ü diğer ikisinin yanında anlamlı kılan da bu.
+
+Hover ilkesi Model-2 ile **aynı**: pitch hâlâ kanat ikilisi ile arka rotor arasındaki
+itki farkından geliyor → `ActuatorEffectivenessTiltrotorVTOL`'ün kapalı tilt-pitch'ine
+hiç ihtiyaç yok, kontrol tahsisi değişmiyor.
+
+**Kanat rotorları neden `y = ±0.25`?** (Model-2'de `±0.35`.) Yeniden kullanılan
+`x8_wing` meshi `x = 0.22`'ye kadar ancak bu dış istasyonda uzanıyor. Yani rotorları
+pitch kolundan (`PX = 0.22`) ödün vermeden kanadın **altında** tutan konum burası.
 
 ---
 
@@ -116,6 +144,47 @@ Topic'ler 0-indeksli, parametreler 1-indekslidir (`servo_3` ↔ `SIM_GZ_SV_*4`).
 | `servo_4` | `motor_1_joint` | `SIM_GZ_SV_FUNC5` | 205 (Tilt 2) |
 | `servo_5` | `motor_2_joint` | `SIM_GZ_SV_FUNC6` | 206 (Tilt 3) |
 
+### Geometri (Model-3)
+
+Aynı FLU↔FRD dönüşümü (`PY = -y_sdf`, `PZ = -z_sdf`). CA parametreleri SDF ile
+**birebir** eşleşiyor (Model-2'deki gibi, Model-1'in aksine — bkz. §6.4).
+
+| Rotor | SDF konum | Yön | PX4 | Rol |
+|---|---|---|---|---|
+| `rotor_0` | `(0.22, -0.25, -0.06)` | ccw | `PX 0.22, PY 0.25, PZ 0.06, KM 0.05, TILT 1` | Kanat sağ |
+| `rotor_1` | `(0.22, +0.25, -0.06)` | cw | `PX 0.22, PY -0.25, PZ 0.06, KM -0.05, TILT 2` | Kanat sol |
+| `rotor_2` | `(-0.65, 0, 0.07)` | ccw | `PX -0.65, PY 0, PZ -0.07, KM 0.05, TILT 3` | Kuyruk / pusher |
+
+Hover pitch dengesi: `2 · T_ön · 0.22 = T_arka · 0.65` → kabaca ağırlığın %37'si her
+kanat rotorunda, %25'i kuyrukta. `PZ` bu dengeye girmez (yalnız `PX`'e bağlı).
+
+Yaw yine kanat rotorlarının diferansiyel tilt'i; arka rotor merkez hattında →
+`CA_SV_TL2_CT 0`. Pitch **bilerek** tilt'lere tahsis edilmedi (`CT 2/3` yok): PX4
+tilt-pitch'i zaten kapatıyor ve bu airframe'in ihtiyacı yok.
+
+Aero yüzeyleri (5 LiftDrag, hepsi `base_link`'e bağlı, `cp`): kanat `(-0.05, ±0.3, 0.05)`,
+elevator'lar `(-0.70, ±0.15, -0.04)`, fin `(-0.74, 0, 0.12)`.
+
+### Servo eşlemesi (Model-3)
+
+Model-2'den farklı olarak **8 servo** var (5 yüzey + 3 tilt). Tilt'ler `SIM_GZ_SV_*6/7/8`.
+
+| gz topic | Joint | Param | Fonksiyon |
+|---|---|---|---|
+| `servo_0` | `left_elevon_joint` | `SIM_GZ_SV_FUNC1` | 201 (Aileron, `TRQ_R -0.5`) |
+| `servo_1` | `right_elevon_joint` | `SIM_GZ_SV_FUNC2` | 202 (Aileron, `TRQ_R 0.5`) |
+| `servo_2` | `left_elevator_joint` | `SIM_GZ_SV_FUNC3` | 203 (Elevator, `TRQ_P 0.5`) |
+| `servo_3` | `right_elevator_joint` | `SIM_GZ_SV_FUNC4` | 204 (Elevator, `TRQ_P 0.5`) |
+| `servo_4` | `rudder_joint` | `SIM_GZ_SV_FUNC5` | 205 (Rudder, `TRQ_Y 1`) |
+| `servo_5` | `motor_0_joint` | `SIM_GZ_SV_FUNC6` | 206 (Tilt 1) |
+| `servo_6` | `motor_1_joint` | `SIM_GZ_SV_FUNC7` | 207 (Tilt 2) |
+| `servo_7` | `motor_2_joint` | `SIM_GZ_SV_FUNC8` | 208 (Tilt 3) |
+
+İki elevator'ın her biri pitch torkunun **yarısını** alıyor → ikisi toplamda
+Model-2'nin tek elevator'ının yetkisini veriyor. Tilt servolarında `MINA/MAXA = 0/90`
+ve `DIS = 0` (disarm'da dikey park) override'ları şart — yoksa bridge ±57.29578°
+varsayılanına düşer ve geçiş tamamlanmaz (bkz. §2.1).
+
 ---
 
 ## 4. Doğrulanmış davranış
@@ -142,6 +211,27 @@ okundu (komut topic'inden değil).
 | Fiziksel tilt | arka `motor_2`: **89.95°**, ön `motor_0`: **89.78°** |
 | Geri geçiş | `vtol_state: 3`, hover'a dönüş |
 
+### Model-3 — `gz_tiltrotor_tailplane`
+| Test | Sonuç |
+|---|---|
+| Hover | 10.6 m'de sabit (`vx=-0.07`, `vy=-0.04` m/s) |
+| Motor dağılımı | `[0.640, 0.645, 0.538]` — kanat ikilisi eşit, kuyruk düşük: geometrinin öngördüğü oran |
+| FW geçişi | `vtol_state: 4`, **16.98 m/s** |
+| Cruise itkisi | üç motor da eşit `0.268` → arka rotor gerçekten pusher |
+| Fiziksel tilt (FW) | `motor_0` **89.81°**, `motor_1` **89.67°**, `motor_2` **89.95°** |
+| Eksen ayrımı (cruise) | elevon `±0.0008` (roll≈0), iki elevator **eşit** `-0.055` (pitch), rudder `0.155` (yaw) |
+| Geri geçiş | `vtol_state: 3`, hover'a dönüş, tiltler 0°'ye |
+| İniş | 1.06 m'de disarm |
+
+Cruise satırı Model-3'ün varlık sebebini doğruluyor: yüzeyler eksen başına ayrışıyor,
+yaw'ı rudder taşıyor (Model-2'de bu yüzey yok).
+
+Hover'da `motor_0` **9.6°** tilt trimi taşırken diğer ikisi 0° limitinde — Model-2'nin
+7.8°'lik trimiyle **aynı olgu** (§6.1/§6.2), beklenen davranış.
+
+**Regresyon:** Model-1/2 yeniden test edilmedi; gerekmedi. Model-3 paylaşılan hiçbir
+dosyaya dokunmuyor (tek istisna CMakeLists'e eklenen kayıt satırı).
+
 ### Bridge backport
 | Kontrol | Sonuç |
 |---|---|
@@ -153,10 +243,18 @@ okundu (komut topic'inden değil).
 ## 5. Depo durumu
 
 ```
-PX4-Autopilot          gz-tiltrotor-port      f29b93020e  → fork ✓
-└─ Tools/simulation/gz   px4-v1.15.4-tiltrotor  bee034b    → fork ✓
-~/px4-tiltrotor-backup/  3 patch (68K)                     → yerel (Model-2 YOK, bkz. §6)
+PX4-Autopilot          gz-tiltrotor-port      d15969691c  → yerel (push edilmedi)
+└─ Tools/simulation/gz   px4-v1.15.4-tiltrotor  debcdee    → yerel (push edilmedi)
+~/px4-tiltrotor-backup/  3 patch (68K)                     → yerel (Model-2/3 YOK, bkz. §6.3)
 ```
+
+> ⚠️ **Model-3 commit'leri (`d15969691c` + submodule `debcdee`) henüz push edilmedi.**
+> Submodule'ü **önce** push edin, yoksa ana depodaki bump erişilemez bir commit'i
+> gösterir (bkz. §2.2 — aynı hata bir kez yapıldı):
+> ```bash
+> cd Tools/simulation/gz && git push fork px4-v1.15.4-tiltrotor
+> cd ~/PX4-Autopilot     && git push fork gz-tiltrotor-port
+> ```
 
 - **Fork'lar:** `umranmeryemkarabakal/PX4-Autopilot`, `umranmeryemkarabakal/PX4-gazebo-models`
 - **Push:** her iki depoda `fork` remote'u hazır → `git push fork <dal>`
@@ -222,11 +320,18 @@ trim yanlılığının kaynağı).
 Alternatif: arka rotoru koaksiyel karşı-dönüşlü yapmak veya `momentConstant`'ını
 düşürmek. Şu an gerçekçi bir davranış (gerçek trikopterler de trimler), acil değil.
 
-### 6.3 Yedek Model-2'yi kapsamıyor
+**Model-3 aynı rotor düzenini miras aldı → aynı olgu var** (hover trimi 9.6°, §4). Fark:
+Model-3'ün rudder'ı var, yani cruise'da tork rudder'a gidiyor (ölçülen `0.155`) ve
+tiltler serbest kalıyor. Hover'da rudder işe yaramaz (airspeed ≈ 0), orada durum
+Model-2 ile birebir aynı. §6.1'in ölçümü Model-3'te **tekrarlanmadı**; mekanizma ortak
+olduğu için sonucun taşınması bekleniyor, ama doğrulanmadı.
 
-`~/px4-tiltrotor-backup/` yamaları `1941058d64` zamanında üretildi; `f29b93020e` ve
-submodule `bee034b` içinde **yok**. Fork'lar güncel olduğu için kritik değil, ama
-yamaları tazelemek isterseniz:
+### 6.3 Yedek Model-2 ve Model-3'ü kapsamıyor
+
+`~/px4-tiltrotor-backup/` yamaları `1941058d64` zamanında üretildi; `f29b93020e`,
+`d15969691c` ve submodule `bee034b`/`debcdee` içinde **yok**. Model-3 commit'leri
+**henüz push de edilmedi** (§5), yani şu an yalnızca bu makinede duruyor — Model-2'nin
+aksine fork yedeği yok. Yamaları tazelemek için:
 
 ```bash
 cd ~/PX4-Autopilot && rm -f ~/px4-tiltrotor-backup/*.patch
@@ -272,7 +377,10 @@ ediyor. Ayrıca `docs/` klasörü PX4'ün yapısında yok; PR'da ayrılmalı.
 
 1. ~~§6.1'i incele~~ — **yapıldı**, asimetri ölçüldü ve zararsız çıktı; tilt aralığı
    değişmedi. Ayrıntı → [§6.1](#61--model-2-hoverda-yaw-asimetrisi--ölçüldü-zararsız-çıktı-tilt-aralığı-değiştirilmedi).
-2. §6.3 — yedek yamalarını tazele (ucuz).
-3. İsteğe bağlı: Model-2 için mission/otonom uçuş testi (şu ana kadar yalnızca
-   `commander takeoff` + `transition` ile manuel test edildi, artı §6.1'in offboard
-   yaw adımları).
+2. **Model-3'ü push et** (§5) — şu an yalnızca yerelde, yedeği yok. Önce submodule.
+3. §6.3 — yedek yamalarını tazele (ucuz).
+4. İsteğe bağlı: Model-2/3 için mission/otonom uçuş testi (şu ana kadar yalnızca
+   `commander takeoff` + `transition` + `land` ile manuel test edildi, artı §6.1'in
+   offboard yaw adımları).
+5. İsteğe bağlı: Model-3'ün rudder'ının cruise'da gerçekten yaw yetkisi verdiğini
+   ölçülü doğrula (şu an yalnızca trim değeri `0.155` gözlendi; adım yanıtı alınmadı).
