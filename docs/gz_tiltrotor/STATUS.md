@@ -3,7 +3,7 @@
 > Bu dosya bir **devir/devam noktası**dır. Çalışmaya buradan devam edilir.
 > Kullanım talimatları için [README.md](README.md).
 >
-> Son güncelleme: 2026-07-15 · Dal: `gz-tiltrotor-port` · Son commit: `f29b93020e`
+> Son güncelleme: 2026-07-16 · Dal: `gz-tiltrotor-port` · Son commit: `889179e24b`
 
 ---
 
@@ -167,29 +167,58 @@ PX4-Autopilot          gz-tiltrotor-port      f29b93020e  → fork ✓
 
 ## 6. Açık konular
 
-### 6.1 ⚠️ Model-2: hover'da yaw yetkisi tek yönlü kısıtlı — **incelenecek**
+### 6.1 ✅ Model-2: hover'da yaw asimetrisi — **ölçüldü, zararsız çıktı; tilt aralığı değiştirilmedi**
 
-**Gözlem:** hover'da tiltler `[-0.831, -1.0, -1.0]` → ön-sağ rotor **7.6° eğik**
-duruyor. Bu, arka rotorun sürükleme torkunun diferansiyel tilt ile trimlenmesi.
+Önceki not, tiltlerin 0° tabanına dayanmasının yaw yetkisini tek yönlü kısıtladığından
+şüpheleniyor ve tilt aralığını `-15°..90°` yapmayı öneriyordu. **Ölçüm bunu
+doğrulamadı** — asimetri gerçek ama yalnızca geçici rejimde; kapalı çevrim takibi
+her iki yönde eşit. Aralık **olduğu gibi bırakıldı**.
 
-**Sorun:** tiltler MC'de 0°'de ve joint limiti (`0 .. 1.57`) negatife izin vermiyor.
-`CA_SV_TL*_MINA = 0` olduğu için hover'daki nötr tilt = 0°. Diferansiyel trim
-yalnızca **pozitif yöne** açılabiliyor → yaw yetkisi asimetrik. Testlerde sorun
-çıkmadı ama agresif yaw manevralarında zayıf kalabilir.
+**Nasıl ölçüldü:** hover'da offboard pozisyon setpoint'i ile ±30° ve ±120° yaw adımı;
+yanıt `ATTITUDE`'dan (jiroskop `yawspeed`, türev değil), tilt komutları uçuş
+ULog'undaki `actuator_servos`'tan okundu.
 
-**Olası çözüm:** tilt aralığını `-15°..90°` yapmak:
-- `model.sdf`: `motor_{0,1,2}_joint` → `<lower>-0.26</lower>`
-- airframe: `CA_SV_TL*_MINA -15`, `SIM_GZ_SV_MINA4/5/6 -15`
-- `SIM_GZ_SV_DIS4/5/6` yeniden hesaplanmalı (0° dikey için artık 500 değil)
+**Mekanizma doğrulandı.** Hover trimi:
 
-**Dikkat:** bu, MC'deki nötr tilt pozisyonunu kaydırır (`MINA` hover pozisyonudur),
-yani ayrı bir test turu ister. Ölçülecek: hover'da tilt komutu gerçekten 0°'ye mi
-oturuyor, yaw step yanıtı simetrik mi.
+| Tilt | Komut | Açı |
+|---|---|---|
+| Tilt1 (sağ kanat) | `-0.827` | **7.8°** |
+| Tilt2 (sol kanat) | `-1.000` | **0.0°** (limitte) |
+| Tilt3 (kuyruk) | `-1.000` | **0.0°** (limitte) |
+
+Yaw daima **bir kanat rotoru kaldırılarak** üretiliyor; diğeri adımın ~%97'sinde
+0°'ye çakılı kalıyor. Yani 0° tabanı gerçekten bağlayıcı — ama her iki yön de kendi
+rotorunu kaldırarak tork üretebildiği için **yetki kaybı yok**. Üst limit (90°) hiç
+görülmedi: 120°'lik adımda bile azami tilt **45°**, yani aralığın yarısı kullanılmıyor.
+
+**Sonuçlar** (her iki adım da hedefe oturdu):
+
+| Adım | Tepe yaw hızı | t90% | Aşım | Kalıcı hata | İrtifa sapması |
+|---|---|---|---|---|---|
+| +30° | 0.88 rad/s (50.6°/s) | 0.94 s | %2.6 | +0.04° | 0.08 m |
+| −30° | 1.11 rad/s (63.6°/s) | 0.96 s | %3.5 | −0.05° | 0.13 m |
+| +120° | 2.37 rad/s (135.8°/s) | 1.22 s | %0.7 | +0.23° | 0.12 m |
+| −120° | 3.30 rad/s (189.0°/s) | 1.20 s | %0.4 | +0.02° | 0.12 m |
+
+**Bulgu:** tepe yaw hızı yönler arasında tutarlı biçimde **%20–28** farklı (negatif yön
+hep daha hızlı; iki bağımsız ±30° koşusunda 0.88/1.11 ve 0.84/1.17 rad/s). Sebep,
+7.8°'lik trim yanlılığı + yaw torkunun tilt açısında doğrusal olmaması
+(`τ ∝ sin(a)`, ama tahsis doğrusal varsayıyor).
+
+Buna karşılık **t90% farkı %2'nin altında**, aşım her iki yönde de küçük, kalıcı hata
+derece-altı, irtifa 0.13 m içinde korunuyor. Yani fark yalnızca geçici tepe hızda;
+takip performansı simetrik. `-15°..90°` değişikliği nötr tilt pozisyonunu kaydırıp yeni
+bir test turu gerektirirdi ve ölçülen bir eksiği kapatmıyor → **yapılmadı**.
+
+**Ne zaman geri dönülmeli:** yaw hızı doyuma ulaşan bir senaryo çıkarsa (azami tilt
+90°'ye dayanırsa) veya agresif yaw'da pozitif yön yetersiz kalırsa. Ölçüm scriptleri
+tekrar üretilebilir: hover'da offboard yaw adımı + `actuator_servos`'u ULog'dan oku.
 
 ### 6.2 Arka rotorun sürükleme torku trimlenmiyor, dengelenmiyor
 
 Model-2'de `rotor_0` (ccw) ve `rotor_1` (cw) birbirini götürüyor, ama `rotor_2` (ccw)
-tek başına net yaw torku üretiyor ve bu sürekli trim gerektiriyor (§6.1'in kaynağı).
+tek başına net yaw torku üretiyor ve bu sürekli trim gerektiriyor (§6.1'deki 7.8°'lik
+trim yanlılığının kaynağı).
 Alternatif: arka rotoru koaksiyel karşı-dönüşlü yapmak veya `momentConstant`'ını
 düşürmek. Şu an gerçekçi bir davranış (gerçek trikopterler de trimler), acil değil.
 
@@ -233,14 +262,17 @@ ediyor. Ayrıca `docs/` klasörü PX4'ün yapısında yok; PR'da ayrılmalı.
 | `gz topic -e` sessizce boş dönüyor | gz-transport docker0'a (`172.17.0.1`) bağlanıyor; CLI ulaşamıyor. Veri akışı sağlam — doğrulamayı `gz model` (servis çağrısı) ile yap. |
 | `gz_frame_id ... not defined in SDF` | Zararsız; model `<sdf version='1.5'>` beyan ediyor. **Sürümü yükseltme** — SDF 1.7 pose frame semantiğini değiştirdi, link pozlarını bozabilir. |
 | Sim yeniden başlatmada takılıyor | Artakalan `gz sim` sunucusu → `pkill -9 -f 'gz sim'` |
+| `make px4_sitl` logu dakikada yüzlerce MB | stdout tty değilken `pxh>` promptu sonsuz yeniden çiziliyor. Betikle sürerken doğrudan `px4 -d` çalıştır (daemon, interaktif shell yok): `cd build/px4_sitl_default/src/modules/simulation/gz_bridge && PX4_SIM_MODEL=gz_tiltrotor_2plus1 ../../../../bin/px4 -d`. Log ikili veri içerdiği için `grep -a` gerekir. |
+| Adım yanıtı ölçümü yönler arası asimetrik görünüyor | pymavlink alım tamponu boşaltılmazsa bekleme fazında biriken `ATTITUDE`'lar sonraki adımın **ilk örnekleri** olarak okunuyor → bir önceki manevra yeni adıma karışıyor. Her bekleme döngüsünde `recv_match(blocking=False)` ile tamponu boşalt; adımın gerçekten hedef açıdan başladığını doğrula. |
+| `px4-listener <topic> -n N` takılıyor | Araç disarm'dayken konu yeniden yayınlanmıyor; `-n` yeni yayın bekler. Tek anlık değer için argümansız çağır — sürekli kayıt için `listener` yerine uçuş **ULog**'unu (`rootfs/log/…​.ulg`, `pyulog`) kullan. |
 
 ---
 
 ## 8. Sonraki adım önerisi
 
-1. **§6.1'i incele** — yaw asimetrisi. Ölçüm önce: hover'da yaw step yanıtını iki
-   yönde karşılaştır, gerçekten sorun mu teyit et. Sorunsa tilt aralığını `-15°..90°`
-   yap ve hover nötr pozisyonunu yeniden doğrula.
+1. ~~§6.1'i incele~~ — **yapıldı**, asimetri ölçüldü ve zararsız çıktı; tilt aralığı
+   değişmedi. Ayrıntı → [§6.1](#61--model-2-hoverda-yaw-asimetrisi--ölçüldü-zararsız-çıktı-tilt-aralığı-değiştirilmedi).
 2. §6.3 — yedek yamalarını tazele (ucuz).
 3. İsteğe bağlı: Model-2 için mission/otonom uçuş testi (şu ana kadar yalnızca
-   `commander takeoff` + `transition` ile manuel test edildi).
+   `commander takeoff` + `transition` ile manuel test edildi, artı §6.1'in offboard
+   yaw adımları).
