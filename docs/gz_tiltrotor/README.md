@@ -3,16 +3,18 @@
 PX4 **v1.15.4** üzerinde Gazebo Harmonic (gz-sim 8) ile çalışan Tilt-Rotor VTOL
 simülasyonları. Gazebo Classic'e ihtiyaç duymaz.
 
-İki bağımsız model vardır:
+Üç bağımsız model vardır:
 
 | Model | Hedef | Konfigürasyon |
 |---|---|---|
 | **Model-1** | `gz_tiltrotor` | 4 rotor; ön 2'si (`motor_0`, `motor_2`) tilt, arka 2'si sabit dikey |
 | **Model-2** | `gz_tiltrotor_2plus1` | 3 rotor; kanatta 2 tilt + kuyrukta 1 tilt (cruise'da pusher) |
+| **Model-3** | `gz_tiltrotor_tailplane` | Model-2'nin tahrik düzeni + klasik kuyruk (2 elevator + rudder) |
 
 Tilt eden rotorlar multicopter modunda dikey durur ve fixed-wing geçişinde fiziksel
 olarak **0° → 90°** tilt eder.
 
+> **Başlatma ve uçurma adımları** (model bazında, beklenen değerlerle) → [RUNBOOK.md](RUNBOOK.md)
 > Proje durumu, tasarım gerekçeleri ve **açık iş kalemleri** için → [STATUS.md](STATUS.md)
 
 ---
@@ -37,8 +39,9 @@ gz sim --version      # Gazebo Sim, version 8.x
 
 ```bash
 cd ~/PX4-Autopilot
-make px4_sitl gz_tiltrotor          # Model-1 (4 rotor)
-make px4_sitl gz_tiltrotor_2plus1   # Model-2 (tri-tiltrotor)
+make px4_sitl gz_tiltrotor            # Model-1 (4 rotor)
+make px4_sitl gz_tiltrotor_2plus1     # Model-2 (tri-tiltrotor)
+make px4_sitl gz_tiltrotor_tailplane  # Model-3 (kuyruklu tri-tiltrotor)
 ```
 
 Gazebo GUI açılır, model spawn olur ve aynı terminalde PX4'ün `pxh>` konsolu gelir.

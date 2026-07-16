@@ -1,7 +1,7 @@
 # Proje Durumu — Gazebo Harmonic VTOL Portu
 
 > Bu dosya bir **devir/devam noktası**dır. Çalışmaya buradan devam edilir.
-> Kullanım talimatları için [README.md](README.md).
+> Kurulum için [README.md](README.md) · Başlatma/uçurma adımları için [RUNBOOK.md](RUNBOOK.md).
 >
 > Son güncelleme: 2026-07-16 · Dal: `gz-tiltrotor-port` · Son commit: `d15969691c`
 
@@ -243,14 +243,19 @@ dosyaya dokunmuyor (tek istisna CMakeLists'e eklenen kayıt satırı).
 ## 5. Depo durumu
 
 ```
-PX4-Autopilot          gz-tiltrotor-port      d15969691c  → yerel (push edilmedi)
-└─ Tools/simulation/gz   px4-v1.15.4-tiltrotor  debcdee    → yerel (push edilmedi)
+PX4-Autopilot          gz-tiltrotor-port      42bb9a089b  → fork ✓
+└─ Tools/simulation/gz   px4-v1.15.4-tiltrotor  debcdee    → fork ✓
 ~/px4-tiltrotor-backup/  3 patch (68K)                     → yerel (Model-2/3 YOK, bkz. §6.3)
 ```
 
-> ⚠️ **Model-3 commit'leri (`d15969691c` + submodule `debcdee`) henüz push edilmedi.**
-> Submodule'ü **önce** push edin, yoksa ana depodaki bump erişilemez bir commit'i
-> gösterir (bkz. §2.2 — aynı hata bir kez yapıldı):
+- **Fork'lar:** `umranmeryemkarabakal/PX4-Autopilot`, `umranmeryemkarabakal/PX4-gazebo-models`
+- **Push:** her iki depoda `fork` remote'u hazır → `git push fork <dal>`
+- Model-3 push edildi ve zincir doğrulandı: ana depodaki bump `debcdee`'yi gösteriyor,
+  o commit fork'ta mevcut.
+
+> ⚠️ Bundan sonraki her submodule değişikliğinde **önce submodule'ü** push edin. Ters
+> sırada ana depodaki bump erişilemez bir commit'i gösterir — `1941058d64`'ün bir kez
+> düzelttiği hata budur:
 > ```bash
 > cd Tools/simulation/gz && git push fork px4-v1.15.4-tiltrotor
 > cd ~/PX4-Autopilot     && git push fork gz-tiltrotor-port
@@ -329,9 +334,8 @@ olduğu için sonucun taşınması bekleniyor, ama doğrulanmadı.
 ### 6.3 Yedek Model-2 ve Model-3'ü kapsamıyor
 
 `~/px4-tiltrotor-backup/` yamaları `1941058d64` zamanında üretildi; `f29b93020e`,
-`d15969691c` ve submodule `bee034b`/`debcdee` içinde **yok**. Model-3 commit'leri
-**henüz push de edilmedi** (§5), yani şu an yalnızca bu makinede duruyor — Model-2'nin
-aksine fork yedeği yok. Yamaları tazelemek için:
+`d15969691c` ve submodule `bee034b`/`debcdee` içinde **yok**. Her iki fork da güncel
+olduğu için kritik değil (§5), ama yamaları tazelemek için:
 
 ```bash
 cd ~/PX4-Autopilot && rm -f ~/px4-tiltrotor-backup/*.patch
@@ -377,10 +381,13 @@ ediyor. Ayrıca `docs/` klasörü PX4'ün yapısında yok; PR'da ayrılmalı.
 
 1. ~~§6.1'i incele~~ — **yapıldı**, asimetri ölçüldü ve zararsız çıktı; tilt aralığı
    değişmedi. Ayrıntı → [§6.1](#61--model-2-hoverda-yaw-asimetrisi--ölçüldü-zararsız-çıktı-tilt-aralığı-değiştirilmedi).
-2. **Model-3'ü push et** (§5) — şu an yalnızca yerelde, yedeği yok. Önce submodule.
+2. ~~Model-3'ü push et~~ — **yapıldı**, her iki fork güncel (§5).
 3. §6.3 — yedek yamalarını tazele (ucuz).
 4. İsteğe bağlı: Model-2/3 için mission/otonom uçuş testi (şu ana kadar yalnızca
    `commander takeoff` + `transition` + `land` ile manuel test edildi, artı §6.1'in
    offboard yaw adımları).
 5. İsteğe bağlı: Model-3'ün rudder'ının cruise'da gerçekten yaw yetkisi verdiğini
-   ölçülü doğrula (şu an yalnızca trim değeri `0.155` gözlendi; adım yanıtı alınmadı).
+   ölçülü doğrula (şu an yalnızca trim değeri `0.155`/`0.176` gözlendi; adım yanıtı
+   alınmadı).
+6. İsteğe bağlı: §6.1'in yaw adım ölçümünü Model-3'te tekrarla — mekanizma Model-2 ile
+   ortak olduğu için sonucun taşınması bekleniyor, ama doğrulanmadı (§6.2).
